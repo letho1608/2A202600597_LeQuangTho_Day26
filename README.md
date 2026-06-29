@@ -53,69 +53,71 @@ LLM tổng hợp câu trả lời
 
 Cùng một tool `get_weather`, dưới đây là hai cách triển khai để thấy rõ sự khác biệt.
 
-### Cách 1 — Function Calling thuần (Anthropic SDK)
+### Cách 1 — Function Calling thuần (Google Gemini SDK)
 
 Tool được **định nghĩa và thực thi ngay trong app**. Model chỉ quyết định gọi tool nào, app tự chạy và đưa kết quả trở lại.
 
 ```python
-# pip install anthropic
-import anthropic
+# pip install google-genai
+from google import genai
+from google.genai import types
 
-client = anthropic.Anthropic()
+client = genai.Client()
 
-# 1. App tự định nghĩa schema của tool (hard-code trong app)
-tools = [
-    {
-        "name": "get_weather",
-        "description": "Lấy thời tiết hiện tại của một thành phố",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "city": {"type": "string", "description": "Tên thành phố"}
-            },
-            "required": ["city"],
+# 1. App tự định nghĩa schema của tool
+get_weather_declaration = types.FunctionDeclaration(
+    name="get_weather",
+    description="Lấy thời tiết hiện tại của một thành phố",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "city": types.Schema(
+                type=types.Type.STRING, description="Tên thành phố"
+            )
         },
-    }
-]
+        required=["city"],
+    ),
+)
+tools = [types.Tool(function_declarations=[get_weather_declaration])]
 
 # 2. App tự thực thi tool
 def get_weather(city: str) -> str:
     # Ở đây thường gọi API thời tiết thật; demo trả về cứng
-    return f"{city}: 31°C, trời nắng"
+    return f"{city}: 29°C, trời mưa"
 
-messages = [{"role": "user", "content": "Thời tiết Hà Nội thế nào?"}]
+contents = [
+    types.Content(role="user", parts=[types.Part.from_text(text="Thời tiết Hanoi thế nào?")])
+]
 
 # 3. Gọi model — model QUYẾT ĐỊNH gọi tool nào, KHÔNG tự chạy
-resp = client.messages.create(
-    model="claude-opus-4-8",
-    max_tokens=1024,
-    tools=tools,
-    messages=messages,
+resp = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=contents,
+    config=types.GenerateContentConfig(tools=tools),
 )
 
 # 4. App đọc yêu cầu gọi tool và TỰ THỰC THI
-if resp.stop_reason == "tool_use":
-    tool_use = next(b for b in resp.content if b.type == "tool_use")
-    result = get_weather(**tool_use.input)  # <-- app chạy, không phải model
+if resp.function_calls:
+    contents.append(resp.candidates[0].content)
 
-    messages.append({"role": "assistant", "content": resp.content})
-    messages.append({
-        "role": "user",
-        "content": [{
-            "type": "tool_result",
-            "tool_use_id": tool_use.id,
-            "content": result,
-        }],
-    })
+    function_responses = []
+    for fc in resp.function_calls:
+        result = get_weather(**fc.args)  # <-- app chạy, không phải model
+        function_responses.append(
+            types.Part.from_function_response(
+                name=fc.name, response={"result": result}
+            )
+        )
+
+    contents.append(types.Content(role="user", parts=function_responses))
 
     # 5. Gọi lại model để nó tổng hợp câu trả lời cuối
-    final = client.messages.create(
-        model="claude-opus-4-8",
-        max_tokens=1024,
-        tools=tools,
-        messages=messages,
+    final = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=contents,
+        config=types.GenerateContentConfig(tools=tools),
     )
-    print(final.content[0].text)
+    print(final.text)
 ```
 
 > Nhược điểm: nếu muốn dùng `get_weather` ở một app khác, bạn phải copy lại cả schema lẫn hàm thực thi.
@@ -132,11 +134,17 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("weather")
 
+_MOCK_DB = {
+    "Hanoi": "29°C, trời mưa",
+    "Haiphong": "33°C, mưa rào",
+    "Danang": "30°C, nhiều mây",
+}
+
 # Chỉ cần decorator — schema được TỰ ĐỘNG sinh ra từ type hints + docstring
 @mcp.tool()
 def get_weather(city: str) -> str:
     """Lấy thời tiết hiện tại của một thành phố."""
-    return f"{city}: 31°C, trời nắng"
+    return f"{city}: {_MOCK_DB.get(city, '28°C, không có dữ liệu chi tiết')}"
 
 if __name__ == "__main__":
     mcp.run()  # chạy server qua stdio
@@ -150,7 +158,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 async def main():
-    params = StdioServerParameters(command="python", args=["weather_server.py"])
+    params = StdioServerParameters(command=sys.executable, args=["weather_server.py"])
 
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -161,8 +169,9 @@ async def main():
             print("Tools server cung cấp:", [t.name for t in tools.tools])
 
             # 2. Client gọi tool — SERVER thực thi rồi trả kết quả về qua MCP
-            result = await session.call_tool("get_weather", {"city": "Hà Nội"})
-            print("Kết quả:", result.content[0].text)
+            for city in ["Hanoi", "Danang", "Haiphong"]:
+                result = await session.call_tool("get_weather", {"city": city})
+                print(f"Kết quả: {result.content[0].text}")
 
 asyncio.run(main())
 ```

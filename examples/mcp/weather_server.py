@@ -20,9 +20,9 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("weather")
 
 _MOCK_DB = {
-    "Hà Nội": "29°C, trời mưa",
-    "Hồ Chí Minh": "33°C, mưa rào",
-    "Đà Nẵng": "30°C, nhiều mây",
+    "Hanoi": "29°C, trời mưa",
+    "Haiphong": "33°C, mưa rào",
+    "Danang": "30°C, nhiều mây",
 }
 
 

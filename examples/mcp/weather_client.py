@@ -35,7 +35,7 @@ async def main() -> None:
                 print(f"  - {t.name}: {t.description}")
 
             # 2. Gọi tool — SERVER thực thi rồi trả kết quả về qua MCP
-            for city in ["Hà Nội", "Đà Nẵng"]:
+            for city in ["Hanoi", "Danang", "Haiphong"]:
                 result = await session.call_tool("get_weather", {"city": city})
                 print(f"\ncall_tool get_weather(city={city!r}):")
                 print("  ->", result.content[0].text)

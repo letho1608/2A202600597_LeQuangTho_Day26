@@ -18,10 +18,13 @@ Tools server cung cấp:
   - get_weather: Lấy thời tiết hiện tại của một thành phố.
 
 call_tool get_weather(city='Hà Nội'):
-  -> Hà Nội: 29°C, trời mưa nhẹ
+  -> Hà Nội: 29°C, trời mưa
 
 call_tool get_weather(city='Đà Nẵng'):
   -> Đà Nẵng: 30°C, nhiều mây
+
+call_tool get_weather(city='Hải Phòng'):
+  -> Hải Phòng: 33°C, mưa rào
 ```
 
 ## Cài đặt
@@ -55,8 +58,9 @@ python weather_client.py   # client tự khởi động weather_server.py
 Đăng ký server với Claude Code để dùng trong chat (làm 1 lần):
 
 ```bash
-claude mcp add weather -- python "$(pwd)/weather_server.py"
+claude mcp add weather -- /đường/dẫn/tới/venv/bin/python /đường/dẫn/tới/weather_server.py
 ```
+> claude mcp add weather -- /Users/truongnh/day26-mcp/examples/mcp/venv/bin/python /Users/truongnh/day26-mcp/examples/mcp/weather_server.py
 
 ## Khác biệt chính
 
