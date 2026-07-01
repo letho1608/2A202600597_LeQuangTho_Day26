@@ -1,6 +1,6 @@
-# Weather Agent - Google ADK with Remote MCP Server
+# Weather Agent - Google ADK with MCP Server
 
-AI agent built with **Google Agent Development Kit (ADK)** that uses remote tools from an **MCP server deployed on Cloud Run**.
+AI agent built with **Google Agent Development Kit (ADK)** that uses tools from a local **MCP server** via Streamable HTTP transport.
 
 ## Architecture
 
@@ -9,45 +9,39 @@ AI agent built with **Google Agent Development Kit (ADK)** that uses remote tool
 │   User Browser  │ ───> │  ADK Web UI      │ ───> │  Weather Agent      │
 │   localhost:8000│      │  (Google ADK)    │      │  (Agent with MCP)   │
 └─────────────────┘      └──────────────────┘      └─────────────────────┘
-                                                              │
-                                                              │ HTTP/SSE
-                                                              ▼
-                                                    ┌─────────────────────┐
-                                                    │  MCP Server         │
-                                                    │  Cloud Run          │
-                                                    │  FastMCP + Tools    │
-                                                    └─────────────────────┘
-                                                              │
-                                                              ▼
-                                                    ┌─────────────────────┐
-                                                    │  WeatherAPI.com     │
-                                                    └─────────────────────┘
+                                                             │
+                                                             │ Streamable HTTP
+                                                             ▼
+                                                   ┌─────────────────────┐
+                                                   │  MCP Server         │
+                                                   │  localhost:8085/mcp │
+                                                   │  FastMCP + Tools    │
+                                                   └─────────────────────┘
+                                                             │
+                                                             ▼
+                                                   ┌─────────────────────┐
+                                                   │  WeatherAPI.com     │
+                                                   └─────────────────────┘
 ```
 
 ## Features
 
-✅ **Remote MCP Tools**: Connects to MCP server deployed on Google Cloud Run  
-✅ **3 Weather Tools**:
-   - `get_current_weather(city)` - Real-time weather conditions
-   - `get_forecast(city, days)` - Weather forecast up to 3 days
-   - `health_check()` - Server health verification
-
-✅ **Web Interface**: Beautiful UI via ADK web  
-✅ **Streaming Responses**: Real-time AI responses  
-✅ **Production Ready**: Deployed on Google Cloud infrastructure
+- **Remote MCP Tools**: Connects to MCP server via Streamable HTTP
+- **3 Weather Tools**:
+  - `get_current_weather(city)` - Real-time weather conditions
+  - `get_forecast(city, days)` - Weather forecast up to 3 days
+  - `health_check()` - Server health verification
+- **Web Interface**: UI via ADK web
+- **Streaming Responses**: Real-time AI responses
 
 ## Quick Start
 
-### 1. Prerequisites
+### 1. Start the MCP Server
 
 ```bash
-# Required
-- Python 3.12+
-- Google API Key (for Gemini)
-- Internet connection (to reach Cloud Run MCP server)
-
-# The MCP server is already deployed at:
-# https://weather-mcp-server-oze7nwnjba-as.a.run.app
+cd ../mcp-server
+export WEATHERAPI_KEY="your_weatherapi_key"
+uv run python weather.py
 ```
 
 ### 2. Setup Environment
@@ -56,29 +50,20 @@ AI agent built with **Google Agent Development Kit (ADK)** that uses remote tool
 cd mcp-client
 
 # Create .env file with your Google API key
-echo "GOOGLE_API_KEY=your_google_api_key_here" > .env
-
 # Get free key from: https://aistudio.google.com/apikey
+echo "GOOGLE_API_KEY=your_google_api_key_here" > .env
 ```
 
 ### 3. Install Dependencies
 
 ```bash
-# If using uv (recommended)
 uv sync
-
-# Or using pip
-pip install google-adk google-generativeai python-dotenv
 ```
 
 ### 4. Run the Agent
 
 ```bash
-# Start ADK web interface
 uv run adk web
-
-# Or with python
-python -m adk web
 ```
 
 ### 5. Use the Agent
@@ -94,32 +79,22 @@ python -m adk web
 
 ```
 mcp-client/
-├── weather_agent/          # ADK Agent directory
+├── weather_agent/
 │   ├── agent.py           # Main agent with MCP connection
-│   └── __init__.py        # Package initialization
-├── client.py              # Standalone MCP client (optional)
-├── pyproject.toml         # Python dependencies
+│   └── __init__.py
+├── pyproject.toml
 ├── .env                   # Environment variables (create this)
-└── README.md             # This file
+└── README.md
 ```
 
 ## Configuration
-
-### Remote MCP Server
-
-The agent connects to:
-```
-URL: https://weather-mcp-server-oze7nwnjba-as.a.run.app
-Protocol: HTTP with Server-Sent Events (SSE)
-Tools: 3 weather-related functions
-```
 
 ### Agent Configuration
 
 In `weather_agent/agent.py`:
 
 ```python
-MCP_SERVER_URL = "https://weather-mcp-server-oze7nwnjba-as.a.run.app"
+MCP_SERVER_URL = "http://localhost:8085/mcp"
 
 connection_params = StreamableHTTPConnectionParams(
     url=MCP_SERVER_URL,
@@ -137,109 +112,28 @@ root_agent = Agent(
 
 ### Agent won't connect to MCP server
 
-**Check logs in terminal:**
-```bash
-uv run adk web
-# Watch for connection messages
-```
+1. **404 errors**: MCP server is not running or wrong port
+   - Ensure the MCP server is running on port 8085
+   - Check `MCP_SERVER_URL` in `agent.py`
 
-**Common issues:**
-1. **404 errors**: MCP server HTTP endpoint configuration
-   - Check if server is deployed: `gcloud run services list`
-   - Verify URL in agent.py matches deployed service
+2. **405 errors**: Port conflict with another application
+   - Check what's running on the port: `lsof -i :8085`
+   - Change port in both server and client if needed
 
-2. **Timeout errors**: Cloud Run cold start
-   - First request may take longer
-   - Try again after 30 seconds
-
-3. **Session terminated**: MCP protocol mismatch
-   - Ensure FastMCP version compatibility
-   - Check server logs: `gcloud run services logs read weather-mcp-server`
+3. **Timeout errors**: Server not started
+   - Start the MCP server first, then the ADK client
 
 ### Fallback Mode
 
-If MCP connection fails, agent runs in fallback mode without tools.
-Fix connection and restart ADK web.
+If MCP connection fails, the agent runs in fallback mode without tools.
+Fix the connection and restart ADK web.
 
-## Advanced Usage
-
-### Using CLI Client
-
-For direct MCP interaction without ADK:
-
-```bash
-# Connect to local MCP server
-python client.py ../mcp-server/weather.py
-
-# Connect to remote MCP server
-python client.py https://weather-mcp-server-oze7nwnjba-as.a.run.app/mcp
-```
-
-### Environment Variables
+## Environment Variables
 
 Create `.env` file:
 ```bash
-# Required
 GOOGLE_API_KEY=your_gemini_api_key
-
-# Optional (for direct API usage)
-WEATHERAPI_KEY=your_weatherapi_key
 ```
-
-## API Reference
-
-### Available Tools
-
-**1. get_current_weather**
-```python
-Args:
-    city (str): City name (e.g., "Brisbane", "Tokyo", "London")
-    
-Returns:
-    str: Current weather conditions including:
-         - Temperature (°C/°F)
-         - Feels like temperature
-         - Weather condition
-         - Humidity, Wind, Pressure
-         - UV Index, Visibility
-```
-
-**2. get_forecast**
-```python
-Args:
-    city (str): City name
-    days (int): Number of days (1-3, default: 3)
-    
-Returns:
-    str: Weather forecast with daily:
-         - High/Low temperatures
-         - Weather conditions
-         - Chance of rain
-         - Max wind speed
-         - UV Index
-```
-
-**3. health_check**
-```python
-Args: None
-
-Returns:
-    str: Server status message
-```
-
-## Deployment Info
-
-### MCP Server (Already Deployed)
-- **Platform**: Google Cloud Run
-- **Region**: asia-southeast1
-- **URL**: https://weather-mcp-server-oze7nwnjba-as.a.run.app
-- **Framework**: FastMCP
-- **Data Source**: WeatherAPI.com
-
-### Local Development
-- **ADK Web**: http://localhost:8000
-- **Framework**: Google ADK
-- **LLM**: Gemini 2.5 Flash
 
 ## Resources
 
@@ -247,8 +141,3 @@ Returns:
 - [MCP Specification](https://modelcontextprotocol.io/)
 - [FastMCP GitHub](https://github.com/jlowin/fastmcp)
 - [WeatherAPI](https://www.weatherapi.com/)
-
-## License
-
-MIT License - See parent directory for details.
-

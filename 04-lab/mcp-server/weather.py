@@ -2,17 +2,8 @@ from typing import Any
 import asyncio
 import httpx
 import os
-import logging
 from mcp.server.fastmcp import FastMCP
 
-# Configure logging based on environment
-if not os.getenv("PORT"):  # Local development
-    # Suppress noisy INFO logs during local development
-    logging.getLogger("mcp.server").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING) 
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("uvicorn").setLevel(logging.WARNING)
-    
 # Initialize FastMCP server
 port = int(os.getenv("PORT", 8085))
 mcp = FastMCP("weather", host="0.0.0.0", port=port)
