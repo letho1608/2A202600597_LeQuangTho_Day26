@@ -1,48 +1,39 @@
 #!/usr/bin/env python3
-"""
-Verification script for Weather Agent setup
-Checks if all components are configured correctly
-"""
+"""Verification script for Weather Agent (Ollama + MCP) setup."""
 import os
 import sys
 from pathlib import Path
 
-def check_environment():
-    """Check if .env file exists and is configured"""
-    print("🔍 Checking environment configuration...")
-    
-    env_file = Path(".env")
-    if not env_file.exists():
-        print("❌ .env file not found")
-        print("   Run: echo 'GOOGLE_API_KEY=your_key' > .env")
+def check_ollama():
+    """Check if Ollama is running and model is available"""
+    print("🔍 Checking Ollama server...")
+    try:
+        import httpx
+        r = httpx.get("http://localhost:11434/api/tags", timeout=5.0)
+        models = [m["name"] for m in r.json().get("models", [])]
+        if "minimax-m3:cloud" in models:
+            print(f"✅ Ollama running - minimax-m3:cloud available")
+            return True
+        else:
+            print(f"⚠️  Ollama running but minimax-m3:cloud not found")
+            print(f"   Run: ollama pull minimax-m3:cloud")
+            return False
+    except Exception as e:
+        print(f"❌ Ollama not reachable: {e}")
+        print(f"   Make sure Ollama is installed and running")
         return False
-    
-    # Check if GOOGLE_API_KEY is set
-    from dotenv import load_dotenv
-    load_dotenv()
-    
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key or api_key == "your_google_api_key_here":
-        print("❌ GOOGLE_API_KEY not configured in .env")
-        print("   Get key from: https://aistudio.google.com/apikey")
-        return False
-    
-    print(f"✅ GOOGLE_API_KEY configured ({api_key[:10]}...)")
-    return True
 
 def check_dependencies():
     """Check if required packages are installed"""
     print("\n🔍 Checking dependencies...")
-    
+
     required_packages = [
-        ("google.adk", "Google ADK"),
-        ("google.generativeai", "Google Generative AI"),
+        ("openai", "OpenAI"),
         ("mcp", "MCP"),
         ("fastmcp", "FastMCP"),
-        ("dotenv", "python-dotenv"),
         ("httpx", "httpx"),
     ]
-    
+
     all_installed = True
     for package, name in required_packages:
         try:
@@ -51,22 +42,22 @@ def check_dependencies():
         except ImportError:
             print(f"❌ {name} not installed")
             all_installed = False
-    
+
     if not all_installed:
-        print("\n   Install with: uv sync")
-        print("   Or: pip install google-adk google-generativeai mcp fastmcp python-dotenv httpx")
-    
+        print("\n   Install with: pip install -r requirements.txt")
+
     return all_installed
 
 def check_agent_structure():
     """Check if agent directory structure is correct"""
     print("\n🔍 Checking agent structure...")
-    
+
     required_files = [
         "weather_agent/agent.py",
         "weather_agent/__init__.py",
+        "main.py",
     ]
-    
+
     all_exist = True
     for file_path in required_files:
         path = Path(file_path)
@@ -75,49 +66,57 @@ def check_agent_structure():
         else:
             print(f"❌ {file_path} not found")
             all_exist = False
-    
+
     return all_exist
 
 def check_mcp_server():
     """Check if MCP server is accessible"""
     print("\n🔍 Checking MCP server connectivity...")
-    
-    server_url = "https://weather-mcp-server-oze7nwnjba-as.a.run.app"
-    
+
+    server_url = "http://localhost:8085/mcp"
+
     try:
         import httpx
         import asyncio
-        
+        from mcp import ClientSession
+        from mcp.client.streamable_http import streamable_http_client
+
         async def test_connection():
-            async with httpx.AsyncClient() as client:
-                response = await client.get(server_url, timeout=10.0)
-                return response.status_code
-        
-        status_code = asyncio.run(test_connection())
-        
-        if status_code in [200, 404]:  # 404 is expected for GET on MCP endpoint
+            http_client = httpx.AsyncClient(
+                headers={"Accept": "application/json, text/event-stream"}
+            )
+            async with http_client:
+                async with streamable_http_client(server_url, http_client=http_client) as (read, write, _):
+                    async with ClientSession(read, write) as session:
+                        await session.initialize()
+                        tools = await session.list_tools()
+                        return len(tools.tools) > 0
+
+        success = asyncio.run(test_connection())
+
+        if success:
             print(f"✅ MCP server reachable at {server_url}")
             return True
         else:
-            print(f"⚠️  MCP server returned status {status_code}")
+            print(f"⚠️  MCP server returned no tools")
             return False
-            
+
     except Exception as e:
         print(f"❌ Cannot reach MCP server: {e}")
         return False
 
 def check_agent_import():
-    """Try to import the agent"""
+    """Try to import the WeatherAgent class"""
     print("\n🔍 Checking agent import...")
-    
+
     try:
-        # Suppress warnings during import
         import warnings
         warnings.filterwarnings("ignore")
-        
-        from weather_agent import root_agent
-        print(f"✅ Agent imported successfully: {root_agent.name}")
-        print(f"   Model: {root_agent.model}")
+        import logging
+        logging.disable(logging.CRITICAL)
+
+        from weather_agent import WeatherAgent
+        print(f"✅ WeatherAgent class imported successfully")
         return True
     except Exception as e:
         print(f"❌ Failed to import agent: {e}")
@@ -126,25 +125,26 @@ def check_agent_import():
 def main():
     """Run all verification checks"""
     print("=" * 60)
-    print("Weather Agent Setup Verification")
+    print("Weather Agent Setup Verification (Ollama + MCP)")
     print("=" * 60)
     print()
-    
+
     checks = [
-        check_environment(),
+        check_ollama(),
         check_dependencies(),
         check_agent_structure(),
         check_mcp_server(),
         check_agent_import(),
     ]
-    
+
     print("\n" + "=" * 60)
     if all(checks):
         print("✅ All checks passed!")
         print("\n🚀 Ready to start!")
-        print("   Run: ./start_agent.sh")
-        print("   Or:  uv run adk web")
-        print("\n📍 Then open: http://localhost:8000")
+        print("   1. Start MCP server:   python ../mcp-server/weather.py")
+        print("   2. Start web UI:       python main.py")
+        print("   3. CLI mode:           python main.py --cli")
+        print("\n📍 Web UI: http://localhost:8000")
         return 0
     else:
         print("❌ Some checks failed")
@@ -153,4 +153,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

@@ -1,5 +1,4 @@
-"""Weather Agent package - ADK agent with remote MCP tools"""
-from .agent import root_agent
+"""Weather Agent - Ollama + MCP tools package."""
+from .agent import WeatherAgent
 
-__all__ = ["root_agent"]
-
+__all__ = ["WeatherAgent"]

@@ -36,8 +36,7 @@ pip install -r requirements.txt
 # MCP demo (không cần API key)
 cd 02-mcp-basics && python weather_client.py
 
-# Function Calling (cần Gemini API key)
-export GEMINI_API_KEY=...
+# Function Calling (cần Ollama)
 cd 01-function-calling && python weather_function_calling.py
 
 # Production — Auth (2 terminal)
